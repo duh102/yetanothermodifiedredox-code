@@ -47,7 +47,8 @@ ioe = I2CDevice(i2c, io_addr)
 # configure the IO expander's pins; GP0 0-4 are our rows, GP1 0-6 our columns
 # we're using the columns as outputs and rows as inputs (due to the diode direction)
 # set port 0 as inputs on 0-4
-commbuf = bytearray([IOE_PORTSEL_ADDR, 0, 0xff, 0x00, 0x00, 0b11111])
+# the registers are, in order, the port select (0), the interrupt mask (all masked, 0xff), pwm output (all off, 0), inversion selection (all off, 0), input/output selection (1 for the first 5 io, inputs), pullup selection (all off, 0), pulldown selection (1 for the first 5 io, pulldowns)
+commbuf = bytearray([IOE_PORTSEL_ADDR, 0, 0xff, 0x00, 0x00, 0b11111, 0, 0xff])
 with ioe:
     ioe.write(commbuf)
 # port 1 should be set as all outputs by default on startup, but let's make it explicit
@@ -68,14 +69,20 @@ class Layer(object):
         self.layerId = layerId
         self.transformed = transformed
 
-layerFn = Layer('Function', {Keycode.ONE: Keycode.F1, Keycode.TWO: Keycode.F2, Keycode.THREE: Keycode.F3, Keycode.FOUR: Keycode.F4, Keycode.FIVE: Keycode.F5, Keycode.W: Keycode.UP_ARROW, Keycode.A: Keycode.LEFT_ARROW, Keycode.D: Keycode.RIGHT_ARROW, Keycode.S: Keycode.DOWN_ARROW})
-layerNav = Layer('Navigation', {})
-layerNumPad = Layer('Numpad', {})
+layerFn = Layer('Function', {Keycode.ONE: Keycode.F1, Keycode.TWO: Keycode.F2, Keycode.THREE: Keycode.F3, Keycode.FOUR: Keycode.F4,
+                             Keycode.FIVE: Keycode.F5, Keycode.SIX: Keycode.F6, Keycode.SEVEN: Keycode.F7, Keycode.EIGHT: Keycode.F8,
+                             Keycode.NINE: Keycode.F9, Keycode.ZERO: Keycode.F10, Keycode.P: Keycode.F11, Keycode.SEMICOLON: Keycode.F12})
+layerNav = Layer('Navigation', {Keycode.W: Keycode.UP_ARROW, Keycode.A: Keycode.LEFT_ARROW, Keycode.D: Keycode.RIGHT_ARROW, Keycode.S: Keycode.DOWN_ARROW})
+layerNumPad = Layer('Numpad', {Keycode.SIX: Keycode.KEYPAD_NUMLOCK, Keycode.SEVEN: Keycode.KEYPAD_FORWARD_SLASH, Keycode.EIGHT: Keycode.KEYPAD_ASTERISK, Keycode.NINE: Keycode.KEYPAD_MINUS,
+                               Keycode.Y: Keycode.KEYPAD_SEVEN, Keycode.U: Keycode.KEYPAD_EIGHT, Keycode.I: Keycode.KEYPAD_NINE, Keycode.O: Keycode.KEYPAD_PLUS,
+                               Keycode.H: Keycode.KEYPAD_FOUR, Keycode.J: Keycode.KEYPAD_FIVE, Keycode.K: Keycode.KEYPAD_SIX, Keycode.L: Keycode.KEYPAD_PLUS,
+                               Keycode.N: Keycode.KEYPAD_ONE, Keycode.M: Keycode.KEYPAD_TWO, Keycode.COMMA: Keycode.KEYPAD_THREE, Keycode.PERIOD: Keycode.KEYPAD_ENTER,
+                               Keycode.RIGHT_ALT: Keycode.KEYPAD_ZERO, Keycode.BACKSLASH: Keycode.KEYPAD_PERIOD, Keycode.EQUALS: Keycode.KEYPAD_ENTER})
 
 
 matrix = {
     0: {
-      0:KeyState(Keycode.GRAVE_ACCENT),
+      0:KeyState(Keycode.ESCAPE),
       1:KeyState(Keycode.TAB),
       2:KeyState(Keycode.CAPS_LOCK),
       3:KeyState(Keycode.LEFT_SHIFT),
@@ -117,19 +124,60 @@ matrix = {
       4:KeyState(Keycode.SPACEBAR)
     },
     6: {
-      0:KeyState(Keycode.ESCAPE),
-      1:KeyState(layerNav, isModifier=True),
-      2:KeyState(Keycode.LEFT_BRACKET),
-      3:KeyState(Keycode.HOME),
-      4:KeyState(Keycode.END)
+      0:KeyState(Keycode.GRAVE_ACCENT),
+      1:KeyState(Keycode.HOME),
+      2:KeyState(Keycode.END),
+      3:KeyState(Keycode.LEFT_BRACKET),
+      4:KeyState(layerNumPad, isModifier=True)
     },
     7: {
       0:KeyState(Keycode.INSERT),
-      1:KeyState(Keycode.SIX),
+      1:KeyState(Keycode.BACKSPACE),
+      2:KeyState(Keycode.ENTER),
+      3:KeyState(Keycode.RIGHT_BRACKET),
+      4:KeyState(layerNav, isModifier=True),
     },
     8: {
-      0:KeyState(Keycode.BACKSPACE),
+      0:KeyState(Keycode.SIX),
       1:KeyState(Keycode.Y),
+      2:KeyState(Keycode.H),
+      3:KeyState(Keycode.N),
+      4:KeyState(Keycode.SPACEBAR)
+    },
+    9: {
+      0:KeyState(Keycode.SEVEN),
+      1:KeyState(Keycode.U),
+      2:KeyState(Keycode.J),
+      3:KeyState(Keycode.M),
+      4:KeyState(Keycode.RIGHT_ALT)
+    },
+    10: {
+      0:KeyState(Keycode.EIGHT),
+      1:KeyState(Keycode.I),
+      2:KeyState(Keycode.K),
+      3:KeyState(Keycode.COMMA),
+      4:KeyState(Keycode.BACKSLASH)
+    },
+    11: {
+      0:KeyState(Keycode.NINE),
+      1:KeyState(Keycode.O),
+      2:KeyState(Keycode.L),
+      3:KeyState(Keycode.PERIOD),
+      4:KeyState(Keycode.EQUALS)
+    },
+    12: {
+      0:KeyState(Keycode.ZERO),
+      1:KeyState(Keycode.P),
+      2:KeyState(Keycode.SEMICOLON),
+      3:KeyState(Keycode.FORWARD_SLASH),
+      4:KeyState(Keycode.RIGHT_GUI)
+    },
+    13: {
+      0:KeyState(Keycode.PAGE_UP),
+      1:KeyState(Keycode.PAGE_DOWN),
+      2:KeyState(Keycode.DELETE),
+      3:KeyState(Keycode.RIGHT_SHIFT),
+      4:KeyState(Keycode.RIGHT_CONTROL)
     }
 }
 
