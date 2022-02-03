@@ -1,6 +1,15 @@
-import board, neopixel_write, digitalio, time, usb_hid
+import board, neopixel_write, digitalio, time, usb_hid, busio
 from adafruit_hid.keyboard import Keyboard
 from adafruit_hid.keycode import Keycode
+from adafruit_bus_device.i2c_device import I2CDevice
+
+SCL = board.GP1
+SDA = board.GP0
+
+io_addr = 0x20
+IOE_PORTSEL_ADDR = 0x18
+IOE_PORT_0_INPUT_ADDR = 0x00
+IOE_PORT_1_OUPUT_ADDR = 0x09
 
 ns_in_ms = 1000000
 ns_in_s = 1000 * ns_in_ms
@@ -31,6 +40,20 @@ for rowPin in rows:
     rowPin.switch_to_input(pull=digitalio.Pull.DOWN)
 for key, ledPin in statusLeds.items():
     ledPin.switch_to_output(value=False)
+    
+i2c = busio.I2C(SCL, SDA)
+ioe = I2CDevice(i2c, io_addr)
+
+# configure the IO expander's pins; GP0 0-4 are our rows, GP1 0-6 our columns
+# we're using the columns as outputs and rows as inputs (due to the diode direction)
+# set port 0 as inputs on 0-4
+commbuf = bytearray([IOE_PORTSEL_ADDR, 0, 0xff, 0x00, 0x00, 0b11111])
+with ioe:
+    ioe.write(commbuf)
+# port 1 should be set as all outputs by default on startup, but let's make it explicit
+commbuf = bytearray([IOE_PORTSEL_ADDR, 1, 0xff, 0x00, 0x00, 0])
+with ioe:
+    ioe.write(commbuf)
     
 class KeyState(object):
     def __init__(self, keycode, isModifier=None):
@@ -99,6 +122,14 @@ matrix = {
       2:KeyState(Keycode.LEFT_BRACKET),
       3:KeyState(Keycode.HOME),
       4:KeyState(Keycode.END)
+    },
+    7: {
+      0:KeyState(Keycode.INSERT),
+      1:KeyState(Keycode.SIX),
+    },
+    8: {
+      0:KeyState(Keycode.BACKSPACE),
+      1:KeyState(Keycode.Y),
     }
 }
 
@@ -158,40 +189,66 @@ def disable_modifier(layer):
           pass
         pressedKeys.add(keycode)
         releasedKeys.add(trans)
+        
+def scan_rh_column(colNum):
+    # if colNum is >=7, we're using left-indexed and should modulo 7
+    # else we're using right-indexed, and can leave it alone
+    colNum = colNum % 7
 
+    commbuf = bytearray([IOE_PORT_1_OUPUT_ADDR, 1<<colNum])
+    with ioe:
+        ioe.write(commbuf)
+    commbuf = bytearray([IOE_PORT_0_INPUT_ADDR])
+    inbuf = bytearray(1)
+    with ioe:
+        ioe.write_then_readinto(commbuf, inbuf)
+    rowScan = []
+    for i in range(5):
+        rowScan.append(inbuf[0] & 1<<i)
+    return rowScan
+
+def checkKey(colIdx, rowIdx, keyDown, pressedKeys, releasedKeys):
+    keyState = matrix.get(colIdx, {}).get(rowIdx, None)
+    if keyState is None:
+        return
+    if keyDown == keyState.state:
+        return
+    keyState.state = keyDown
+    if keyDown:
+        if keyState.isModifier:
+          enable_modifier(keyState.keycode)
+        else:
+          pressedKeys.append(keyState.keycode)
+    else:
+        if keyState.isModifier:
+          disable_modifier(keyState.keycode)
+        else:
+          try:
+            pressedKeys.remove(keyState.keycode)
+          except ValueError:
+            pass
+          releasedKeys.append(keyState.keycode)
 
 def doKeyboard(pressedKeys):
     releasedKeys = []
-    # scan all the keys
+    # scan all the keys on the left half
     for cidx, columnPin in enumerate(columns):
         try:
-            columnDict = matrix.get(cidx, {})
             columnPin.value = True
             for ridx, rowPin in enumerate(rows):
-                keyState = columnDict.get(ridx, None)
-                if keyState is None:
-                    continue
                 # keyState is True when pressed, False when released
                 # rowPin, on the other hand, is pulled down when pressed, hence it will be False
-                if rowPin.value == keyState.state:
-                    continue
-                keyState.state = rowPin.value
-                if rowPin.value:
-                    if keyState.isModifier:
-                      enable_modifier(keyState.keycode)
-                    else:
-                      pressedKeys.append(keyState.keycode)
-                else:
-                    if keyState.isModifier:
-                      disable_modifier(keyState.keycode)
-                    else:
-                      try:
-                        pressedKeys.remove(keyState.keycode)
-                      except ValueError:
-                        pass
-                      releasedKeys.append(keyState.keycode)
+                keyDown = rowPin.value
+                checkKey(cidx, ridx, keyDown, pressedKeys, releasedKeys)
         finally:
             columnPin.value = False
+    # scan all the keys on the right half
+    ## left-indexing, so starting at 7 and going to 14
+    for cidx in range(7,14):
+        keysDown = scan_rh_column(cidx)
+        for ridx, keyDown in enumerate(keysDown):
+            checkKey(cidx, ridx, keyDown, pressedKeys, releasedKeys)
+        
     # send any released keys
     if len(releasedKeys) > 0:
         kbd.release(*releasedKeys)
