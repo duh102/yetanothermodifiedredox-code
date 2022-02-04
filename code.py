@@ -77,7 +77,8 @@ layerNumPad = Layer('Numpad', {Keycode.SIX: Keycode.KEYPAD_NUMLOCK, Keycode.SEVE
                                Keycode.Y: Keycode.KEYPAD_SEVEN, Keycode.U: Keycode.KEYPAD_EIGHT, Keycode.I: Keycode.KEYPAD_NINE, Keycode.O: Keycode.KEYPAD_PLUS,
                                Keycode.H: Keycode.KEYPAD_FOUR, Keycode.J: Keycode.KEYPAD_FIVE, Keycode.K: Keycode.KEYPAD_SIX, Keycode.L: Keycode.KEYPAD_PLUS,
                                Keycode.N: Keycode.KEYPAD_ONE, Keycode.M: Keycode.KEYPAD_TWO, Keycode.COMMA: Keycode.KEYPAD_THREE, Keycode.PERIOD: Keycode.KEYPAD_ENTER,
-                               Keycode.RIGHT_ALT: Keycode.KEYPAD_ZERO, Keycode.BACKSLASH: Keycode.KEYPAD_PERIOD, Keycode.EQUALS: Keycode.KEYPAD_ENTER})
+                               Keycode.RIGHT_ALT: Keycode.KEYPAD_ZERO, Keycode.BACKSLASH: Keycode.KEYPAD_PERIOD, Keycode.EQUALS: Keycode.KEYPAD_ENTER,
+                               Keycode.BACKSPACE: Keycode.DELETE})
 
 
 matrix = {
@@ -175,7 +176,7 @@ matrix = {
     13: {
       0:KeyState(Keycode.PAGE_UP),
       1:KeyState(Keycode.PAGE_DOWN),
-      2:KeyState(Keycode.DELETE),
+      2:KeyState(Keycode.QUOTE),
       3:KeyState(Keycode.RIGHT_SHIFT),
       4:KeyState(Keycode.RIGHT_CONTROL)
     }
