@@ -13,7 +13,7 @@ IOE_PORT_1_OUPUT_ADDR = 0x09
 
 ns_in_ms = 1000000
 ns_in_s = 1000 * ns_in_ms
-target_ns = 50 * ns_in_ms
+target_ns = 1
 led_on = False
 
 pin = digitalio.DigitalInOut(board.NEOPIXEL)
@@ -40,7 +40,7 @@ for rowPin in rows:
     rowPin.switch_to_input(pull=digitalio.Pull.DOWN)
 for key, ledPin in statusLeds.items():
     ledPin.switch_to_output(value=False)
-    
+
 i2c = busio.I2C(SCL, SDA)
 ioe = I2CDevice(i2c, io_addr)
 
@@ -55,190 +55,86 @@ with ioe:
 commbuf = bytearray([IOE_PORTSEL_ADDR, 1, 0xff, 0x00, 0x00, 0])
 with ioe:
     ioe.write(commbuf)
-    
+
 class KeyState(object):
-    def __init__(self, keycode, isModifier=None):
-        self.keycode = keycode
+    def __init__(self, x, y):
         self.state = False
-        self.isModifier = isModifier
-        if self.isModifier is None:
-            self.isModifier = False
-            
-class Layer(object):
+        self.x = x
+        self.y = y
+
+class KeyDef(object):
+    def __init__(self, contents):
+        self.contents = contents
+
+    def isModifier(self):
+        return False
+
+class Layer(KeyDef):
     def __init__(self, layerId, transformed):
         self.layerId = layerId
         self.transformed = transformed
 
-layerFn = Layer('Function', {Keycode.ONE: Keycode.F1, Keycode.TWO: Keycode.F2, Keycode.THREE: Keycode.F3, Keycode.FOUR: Keycode.F4,
-                             Keycode.FIVE: Keycode.F5, Keycode.SIX: Keycode.F6, Keycode.SEVEN: Keycode.F7, Keycode.EIGHT: Keycode.F8,
-                             Keycode.NINE: Keycode.F9, Keycode.ZERO: Keycode.F10, Keycode.P: Keycode.F11, Keycode.SEMICOLON: Keycode.F12})
-layerNav = Layer('Navigation', {Keycode.W: Keycode.UP_ARROW, Keycode.A: Keycode.LEFT_ARROW, Keycode.D: Keycode.RIGHT_ARROW, Keycode.S: Keycode.DOWN_ARROW})
-layerNumPad = Layer('Numpad', {Keycode.SIX: Keycode.KEYPAD_NUMLOCK, Keycode.SEVEN: Keycode.KEYPAD_FORWARD_SLASH, Keycode.EIGHT: Keycode.KEYPAD_ASTERISK, Keycode.NINE: Keycode.KEYPAD_MINUS,
-                               Keycode.Y: Keycode.KEYPAD_SEVEN, Keycode.U: Keycode.KEYPAD_EIGHT, Keycode.I: Keycode.KEYPAD_NINE, Keycode.O: Keycode.KEYPAD_PLUS,
-                               Keycode.H: Keycode.KEYPAD_FOUR, Keycode.J: Keycode.KEYPAD_FIVE, Keycode.K: Keycode.KEYPAD_SIX, Keycode.L: Keycode.KEYPAD_PLUS,
-                               Keycode.N: Keycode.KEYPAD_ONE, Keycode.M: Keycode.KEYPAD_TWO, Keycode.COMMA: Keycode.KEYPAD_THREE, Keycode.PERIOD: Keycode.KEYPAD_ENTER,
-                               Keycode.RIGHT_ALT: Keycode.KEYPAD_ZERO, Keycode.BACKSLASH: Keycode.KEYPAD_PERIOD, Keycode.EQUALS: Keycode.KEYPAD_ENTER,
-                               Keycode.BACKSPACE: Keycode.DELETE})
+    def isModifier(self):
+        return True
 
+    def keyAt(self, colId, rowId):
+        if len(self.transformed) <= colId:
+            return None
+        col = self.transformed[colId]
+        if len(col) <= rowId:
+            return None
+        return col[rowId]
+
+layerFn = Layer('Function', [[], [KeyDef(Keycode.F1)], [KeyDef(Keycode.F2)], [KeyDef(Keycode.F3)], [KeyDef(Keycode.F4)], [KeyDef(Keycode.F5)],
+                             [KeyDef(Keycode.F6)], [KeyDef(Keycode.F7)], [KeyDef(Keycode.F8)], [KeyDef(Keycode.F9)], [KeyDef(Keycode.F10), KeyDef(Keycode.F11), KeyDef(Keycode.F12)]])
+layerNav = Layer('Navigation', [[], [None, None, KeyDef(Keycode.LEFT_ARROW)], [None, KeyDef(Keycode.UP_ARROW), KeyDef(Keycode.DOWN_ARROW)], [None, None, KeyDef(Keycode.RIGHT_ARROW)]])
+layerNumPad = Layer('Numpad', [[], [], [], [], [], [], [], [], [],
+                               [KeyDef(Keycode.KEYPAD_NUMLOCK), KeyDef(Keycode.KEYPAD_SEVEN), KeyDef(Keycode.KEYPAD_FOUR), KeyDef(Keycode.KEYPAD_ONE), KeyDef(Keycode.KEYPAD_ZERO)],
+                               [KeyDef(Keycode.KEYPAD_FORWARD_SLASH), KeyDef(Keycode.KEYPAD_EIGHT), KeyDef(Keycode.KEYPAD_FIVE), KeyDef(Keycode.KEYPAD_TWO), KeyDef(Keycode.KEYPAD_ZERO)],
+                               [KeyDef(Keycode.KEYPAD_ASTERISK), KeyDef(Keycode.KEYPAD_NINE), KeyDef(Keycode.KEYPAD_SIX), KeyDef(Keycode.KEYPAD_THREE), KeyDef(Keycode.KEYPAD_PERIOD)],
+                               [KeyDef(Keycode.KEYPAD_MINUS), KeyDef(Keycode.KEYPAD_PLUS), KeyDef(Keycode.KEYPAD_PLUS), KeyDef(Keycode.KEYPAD_ENTER), KeyDef(Keycode.KEYPAD_ENTER)]])
+
+# default map, without any modifiers applied
+keycodeMap = [
+    # left half
+    # matrix is columns from 0 to 13, 0-6 are left half, 7-13 right half
+    # keys are indexed from top to bottom, 0 to 4
+    [KeyDef(Keycode.ESCAPE), KeyDef(Keycode.TAB), KeyDef(Keycode.CAPS_LOCK), KeyDef(Keycode.LEFT_SHIFT), KeyDef(Keycode.LEFT_CONTROL)],
+    [KeyDef(Keycode.ONE), KeyDef(Keycode.Q), KeyDef(Keycode.A), KeyDef(Keycode.Z), KeyDef(Keycode.GUI)],
+    [KeyDef(Keycode.TWO), KeyDef(Keycode.W), KeyDef(Keycode.S), KeyDef(Keycode.X), layerFn],
+    [KeyDef(Keycode.THREE), KeyDef(Keycode.E), KeyDef(Keycode.D), KeyDef(Keycode.C), KeyDef(Keycode.MINUS)],
+    [KeyDef(Keycode.FOUR), KeyDef(Keycode.R), KeyDef(Keycode.F), KeyDef(Keycode.V), KeyDef(Keycode.LEFT_ALT)],
+    [KeyDef(Keycode.FIVE), KeyDef(Keycode.T), KeyDef(Keycode.G), KeyDef(Keycode.B), KeyDef(Keycode.SPACEBAR)],
+    [KeyDef(Keycode.GRAVE_ACCENT), KeyDef(Keycode.HOME), KeyDef(Keycode.END), KeyDef(Keycode.LEFT_BRACKET), layerNumPad],
+    # right half
+    [KeyDef(Keycode.INSERT), KeyDef(Keycode.BACKSPACE), KeyDef(Keycode.ENTER), KeyDef(Keycode.RIGHT_BRACKET), layerNav],
+    [KeyDef(Keycode.SIX), KeyDef(Keycode.Y), KeyDef(Keycode.H), KeyDef(Keycode.N), KeyDef(Keycode.SPACEBAR)],
+    [KeyDef(Keycode.SEVEN), KeyDef(Keycode.U), KeyDef(Keycode.J), KeyDef(Keycode.M), KeyDef(Keycode.RIGHT_ALT)],
+    [KeyDef(Keycode.EIGHT), KeyDef(Keycode.I), KeyDef(Keycode.K), KeyDef(Keycode.COMMA), KeyDef(Keycode.BACKSLASH)],
+    [KeyDef(Keycode.NINE), KeyDef(Keycode.O), KeyDef(Keycode.L), KeyDef(Keycode.PERIOD), KeyDef(Keycode.EQUALS)],
+    [KeyDef(Keycode.ZERO), KeyDef(Keycode.P), KeyDef(Keycode.SEMICOLON), KeyDef(Keycode.FORWARD_SLASH), KeyDef(Keycode.RIGHT_GUI)],
+    [KeyDef(Keycode.PAGE_UP), KeyDef(Keycode.PAGE_DOWN), KeyDef(Keycode.QUOTE), KeyDef(Keycode.RIGHT_SHIFT), KeyDef(Keycode.RIGHT_CONTROL)],
+]
 
 matrix = {
-    0: {
-      0:KeyState(Keycode.ESCAPE),
-      1:KeyState(Keycode.TAB),
-      2:KeyState(Keycode.CAPS_LOCK),
-      3:KeyState(Keycode.LEFT_SHIFT),
-      4:KeyState(Keycode.LEFT_CONTROL)
-    },
-    1: {
-      0:KeyState(Keycode.ONE),
-      1:KeyState(Keycode.Q),
-      2:KeyState(Keycode.A),
-      3:KeyState(Keycode.Z),
-      4:KeyState(Keycode.GUI)
-    },
-    2: {
-      0:KeyState(Keycode.TWO),
-      1:KeyState(Keycode.W),
-      2:KeyState(Keycode.S),
-      3:KeyState(Keycode.X),
-      4:KeyState(layerFn, isModifier=True)
-    },
-    3: {
-      0:KeyState(Keycode.THREE),
-      1:KeyState(Keycode.E),
-      2:KeyState(Keycode.D),
-      3:KeyState(Keycode.C),
-      4:KeyState(Keycode.MINUS)
-    },
-    4: {
-      0:KeyState(Keycode.FOUR),
-      1:KeyState(Keycode.R),
-      2:KeyState(Keycode.F),
-      3:KeyState(Keycode.V),
-      4:KeyState(Keycode.LEFT_ALT)
-    },
-    5: {
-      0:KeyState(Keycode.FIVE),
-      1:KeyState(Keycode.T),
-      2:KeyState(Keycode.G),
-      3:KeyState(Keycode.B),
-      4:KeyState(Keycode.SPACEBAR)
-    },
-    6: {
-      0:KeyState(Keycode.GRAVE_ACCENT),
-      1:KeyState(Keycode.HOME),
-      2:KeyState(Keycode.END),
-      3:KeyState(Keycode.LEFT_BRACKET),
-      4:KeyState(layerNumPad, isModifier=True)
-    },
-    7: {
-      0:KeyState(Keycode.INSERT),
-      1:KeyState(Keycode.BACKSPACE),
-      2:KeyState(Keycode.ENTER),
-      3:KeyState(Keycode.RIGHT_BRACKET),
-      4:KeyState(layerNav, isModifier=True),
-    },
-    8: {
-      0:KeyState(Keycode.SIX),
-      1:KeyState(Keycode.Y),
-      2:KeyState(Keycode.H),
-      3:KeyState(Keycode.N),
-      4:KeyState(Keycode.SPACEBAR)
-    },
-    9: {
-      0:KeyState(Keycode.SEVEN),
-      1:KeyState(Keycode.U),
-      2:KeyState(Keycode.J),
-      3:KeyState(Keycode.M),
-      4:KeyState(Keycode.RIGHT_ALT)
-    },
-    10: {
-      0:KeyState(Keycode.EIGHT),
-      1:KeyState(Keycode.I),
-      2:KeyState(Keycode.K),
-      3:KeyState(Keycode.COMMA),
-      4:KeyState(Keycode.BACKSLASH)
-    },
-    11: {
-      0:KeyState(Keycode.NINE),
-      1:KeyState(Keycode.O),
-      2:KeyState(Keycode.L),
-      3:KeyState(Keycode.PERIOD),
-      4:KeyState(Keycode.EQUALS)
-    },
-    12: {
-      0:KeyState(Keycode.ZERO),
-      1:KeyState(Keycode.P),
-      2:KeyState(Keycode.SEMICOLON),
-      3:KeyState(Keycode.FORWARD_SLASH),
-      4:KeyState(Keycode.RIGHT_GUI)
-    },
-    13: {
-      0:KeyState(Keycode.PAGE_UP),
-      1:KeyState(Keycode.PAGE_DOWN),
-      2:KeyState(Keycode.QUOTE),
-      3:KeyState(Keycode.RIGHT_SHIFT),
-      4:KeyState(Keycode.RIGHT_CONTROL)
-    }
+  colIdx: {
+    rowIdx: KeyState(colIdx, rowIdx) for rowIdx in range(5)
+  } for colIdx in range(14)
 }
 
 reverseMatrix = {}
 pressedKeys = []
 modifiers = []
 
-## check the whole matrix, make sure it's a sane configuration
-brokenMatrixEntries = []
-for column, columnCon in matrix.items():
-  for row, rowCon in columnCon.items():
-    if not (hasattr(rowCon, 'keycode') and hasattr(rowCon, 'state') and hasattr(rowCon, 'isModifier')):
-      brokenMatrixEntries.append((column, row, rowCon, 'attributes keycode {} state {} isModifier {}'.format(hasattr(rowCon, 'keycode'), hasattr(rowCon, 'state'), hasattr(rowCon, 'isModifier'))))
-      continue
-    if type(rowCon.keycode) != int and not rowCon.isModifier:
-      brokenMatrixEntries.append((column,  row, rowCon, 'keycode not integer but key not modifier'))
-      continue
-    if rowCon.keycode not in reverseMatrix:
-      reverseMatrix[rowCon.keycode] = []
-    reverseMatrix[rowCon.keycode].append((column, row))
-
 def enable_modifier(layer):
   modifiers.append(layer)
-  for keycode in pressedKeys.copy():
-    if keycode in layer.transformed:
-      try:
-        pressedKeys.remove(keycode)
-      except ValueError:
-        pass
-      releasedKeys.append(keycode)
-      pressedKeys.append(layer.transformed.get(keycode))
-  for keycode, trans in layer.transformed.items():
-    replacedKeys = reverseMatrix.get(keycode)
-    if replacedKeys is None:
-      continue
-    for replacedKey in replacedKeys:
-      matrix[replacedKey[0]][replacedKey[1]].keycode = trans
-      
+
 def disable_modifier(layer):
-    modifiers.remove(layer)
-    ## we have to release the modified keys and press the unmodified keys now
-    for keycode, trans in layer.transformed.items():
-      replacedKeys = reverseMatrix.get(keycode)
-      ## if we still have modifiers in the stack, we have to see if any modifiers also modified the current keys
-      if len(modifiers) > 0:
-        for newLayer in modifiers[::-1]:
-          if keycode in newLayer.transformed:
-            keycode = newLayer.transformed[keycode]
-            break
-      if replacedKeys is not None:
-        for replacedKey in replacedKeys:
-          matrix[replacedKey[0]][replacedKey[1]].keycode = keycode
-      if trans in pressedKeys:
-        try:
-          pressedKeys.remove(trans)
-        except ValueError:
-          pass
-        pressedKeys.add(keycode)
-        releasedKeys.add(trans)
-        
+    try:
+        modifiers.remove(layer)
+    except ValueError:
+        pass
+
 def scan_rh_column(colNum):
     # if colNum is >=7, we're using left-indexed and should modulo 7
     # else we're using right-indexed, and can leave it alone
@@ -262,21 +158,36 @@ def checkKey(colIdx, rowIdx, keyDown, pressedKeys, releasedKeys):
         return
     if keyDown == keyState.state:
         return
+    keydef = getKeydef(colIdx, rowIdx)
     keyState.state = keyDown
     if keyDown:
-        if keyState.isModifier:
-          enable_modifier(keyState.keycode)
+        if keydef.isModifier():
+          enable_modifier(keydef)
         else:
-          pressedKeys.append(keyState.keycode)
+          pressedKeys.append(keyState)
     else:
-        if keyState.isModifier:
-          disable_modifier(keyState.keycode)
+        if keydef.isModifier():
+          disable_modifier(keydef)
         else:
           try:
-            pressedKeys.remove(keyState.keycode)
+            pressedKeys.remove(keyState)
           except ValueError:
             pass
-          releasedKeys.append(keyState.keycode)
+          releasedKeys.append(keyState)
+
+def getKeydef(colIdx, rowIdx):
+    if len(modifiers) > 0:
+        for layer in modifiers[::-1]:
+            keyDef = layer.keyAt(colIdx, rowIdx)
+            if keyDef is not None:
+                return keyDef
+    return keycodeMap[colIdx][rowIdx]
+
+def getKeycode(colIdx, rowIdx):
+    keyDef = getKeydef(colIdx, rowIdx)
+    if keyDef.isModifier():
+        return None
+    return keyDef.contents
 
 def doKeyboard(pressedKeys):
     releasedKeys = []
@@ -297,13 +208,23 @@ def doKeyboard(pressedKeys):
         keysDown = scan_rh_column(cidx)
         for ridx, keyDown in enumerate(keysDown):
             checkKey(cidx, ridx, keyDown, pressedKeys, releasedKeys)
-        
+
     # send any released keys
     if len(releasedKeys) > 0:
-        kbd.release(*releasedKeys)
+        keycodes = []
+        for keystate in releasedKeys:
+            contents = getKeycode(keystate.x, keystate.y)
+            if contents is not None:
+                keycodes.append(contents)
+        kbd.release(*keycodes)
     # then send any keys still depressed (sorry keys :( )
     if len(pressedKeys) > 0:
-        kbd.press(*pressedKeys)
+        keycodes = []
+        for keystate in pressedKeys:
+            contents = getKeycode(keystate.x, keystate.y)
+            if contents is not None:
+                keycodes.append(contents)
+        kbd.press(*keycodes)
     for keycode, ledPin  in statusLeds.items():
       if kbd.led_on(keycode):
         ledPin.value = True
